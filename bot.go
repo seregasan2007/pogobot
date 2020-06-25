@@ -118,7 +118,7 @@ func MainHandler(resp http.ResponseWriter, _ *http.Request) {
 
 func main() {
 	b, err := tb.NewBot(tb.Settings{
-		Token: "BOT_TOKEN",
+		Token: os.Getenv("BOT_TOKEN"),
 		Poller: &tb.LongPoller{Timeout: 10 * time.Second},
 	})
 	if err != nil {
@@ -194,7 +194,7 @@ func main() {
 				
 				req, err := http.NewRequest("GET", "https://api.weather.yandex.ru/v1/forecast?lat=55.715723&lon=37.459478", nil)
 				ykey := "X-Yandex-API-Key"
-				yval := "YA_TOKEN"
+				yval := os.Getenv("YA_TOKEN")
 				req.Header.Add(ykey, yval)
 				if err != nil {
 					log.Fatalln(err)

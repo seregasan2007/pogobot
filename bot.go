@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"io/ioutil"
 	"encoding/json"
-	tb "gopkg.in/tucnak/telebot.v2"
+	tb "https://github.com/tucnak/telebot"
 )
 
 type Info struct {

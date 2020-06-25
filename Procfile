@@ -1,1 +1,1 @@
-worcker: bot
+worcker: go run bot.go

@@ -117,8 +117,9 @@ func MainHandler(resp http.ResponseWriter, _ *http.Request) {
 }
 
 func main() {
+	bot_token := os.Getenv("BOT_TOKEN")
 	b, err := tb.NewBot(tb.Settings{
-		Token: os.Getenv("BOT_TOKEN"),
+		Token: bot_token,
 		Poller: &tb.LongPoller{Timeout: 10 * time.Second},
 	})
 	if err != nil {

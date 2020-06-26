@@ -201,10 +201,9 @@ func main() {
 	
 
 	mainInline := [][]tb.InlineButton{
-		[]tb.InlineButton{act_data},
 		[]tb.InlineButton{fact, nextd},
 		[]tb.InlineButton{fact_per_hour, tomorrow_per_hour},
-		[]tb.InlineButton{det},
+		[]tb.InlineButton{det, act_data},
 	}
 
 	detInline := [][]tb.InlineButton{

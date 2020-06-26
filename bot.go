@@ -79,9 +79,9 @@ type day_time struct {
 	Temp_max int `json:"temp_max"`
 	Temp_avg int `json:"temp_avg"`
 	Feels int `json:"feels_like"`
-	Wind_speed int `json:"wind_speed"`
-	Wind_gust int `json:"wind_gust"`
-	Cloudness float32 `json:"cloudness"`
+	Windspeed int `json:"wind_speed"`
+	Windgust int `json:"wind_gust"`
+	Cloudness float64 `json:"cloudness"`
 }
 
 type short_part struct {
@@ -95,7 +95,7 @@ type short_part struct {
 	Pr_mm int `json:"pressure_mm"`
 	Pr_pa int `json:"pressure_pa"`
 	Humidity int `json:"humidity"`
-	Cloudness float32 `json:"cloudness"`
+	Cloudness float64 `json:"cloudness"`
 }
 
 type hour struct {
@@ -119,11 +119,35 @@ func MainHandler(resp http.ResponseWriter, _ *http.Request) {
 func main() {
 	bot_token := os.Getenv("BOT_TOKEN")
 	b, err := tb.NewBot(tb.Settings{
-		Token: bot_token,
+		Token: bot_token, 
 		Poller: &tb.LongPoller{Timeout: 10 * time.Second},
 	})
 	if err != nil {
 		return
+	}
+
+	weekday := int(time.Now().Weekday())
+	weekdays := [7]string{"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресение"}
+
+	condition_emo := map[string]string{
+		"clear": "☀️",
+		"partly-cloudy": "🌤️",
+		"cloudy": "⛅",
+		"overcast": "🌦️",
+		"partly-cloudy-and-light-rain": "🌦️",
+		"partly-cloudy-and-rain": "🌦️",
+		"overcast-and-rain": "🌦️",
+		"overcast-thunderstorms-with-rain": "⛈️",
+		"cloudy-and-light-rain": "🌦️",
+		"overcast-and-light-rain": "🌦️",
+		"cloudy-and-rain": "🌦️",
+		"overcast-and-wet-snow": "💧❄️",
+		"partly-cloudy-and-light-snow": "🌨️",
+		"partly-cloudy-and-snow": "🌨️", 
+		"overcast-and-snow": "🌨️",
+		"cloudy-and-light-snow": "🌨️",
+		"overcast-and-light-snow": "🌨️",
+		"cloudy-and-snow": "🌨️",
 	}
 
 	log.Printf("Authorized on account PoGoBot")
@@ -143,6 +167,16 @@ func main() {
 	nextd := tb.InlineButton{
 		Unique: "ND",
 		Text:   "☁️ Завтра",
+	}
+
+	fact_per_hour := tb.InlineButton{
+		Unique: "FPH",
+		Text:   "🕒 Сегодня по часам",
+	}
+
+	tomorrow_per_hour := tb.InlineButton{
+		Unique: "TPH",
+		Text:   "🕒 Завтра по часам",
 	}
 
 	det := tb.InlineButton{
@@ -169,6 +203,7 @@ func main() {
 	mainInline := [][]tb.InlineButton{
 		[]tb.InlineButton{act_data},
 		[]tb.InlineButton{fact, nextd},
+		[]tb.InlineButton{fact_per_hour, tomorrow_per_hour},
 		[]tb.InlineButton{det},
 	}
 
@@ -217,12 +252,12 @@ func main() {
 			b.Handle(&nextd, func(c *tb.Callback) {
 
 				log.Println(m.Sender.Username, ": nextd")
-
-				temp := "Завтра температура воздуха составит: " + strconv.Itoa(info.Forecast[1].Parts.Day_short.Temp) + " ℃"
+				cld := info.Forecast[1].Parts.Day_short.Condition
+				temp := "\nЗавтра температура воздуха составит: " + strconv.Itoa(info.Forecast[1].Parts.Day_short.Temp) + " ℃"
 				feels := "\nОщущается как: " + strconv.Itoa(info.Forecast[1].Parts.Day_short.Feels) + " ℃"
 				wind := "\nСкорость ветра: " + strconv.Itoa(info.Forecast[1].Parts.Day_short.WindSpeed) + "м/с"
 
-				ureq := temp + feels + wind
+				ureq := condition_emo[cld] + condition_emo[cld] + condition_emo[cld] + temp + feels + wind
 
 				b.Edit(c.Message, ureq, &tb.ReplyMarkup{
 					InlineKeyboard: mainInline,
@@ -233,13 +268,65 @@ func main() {
 
 			b.Handle(&fact, func(c *tb.Callback) {
 
-				log.Println(m.Sender.Username, ": fact")
-
-				temp := "Температура воздуха составляет: " + strconv.Itoa(info.Fact.Temp) + " ℃"
+				log.Println(m.Sender.Username, ": fact ---")
+				cld := info.Fact.Condition
+				temp := "\nТемпература воздуха составляет: " + strconv.Itoa(info.Fact.Temp) + " ℃"
 				feels := "\nОщущается как: " + strconv.Itoa(info.Fact.Feels) + " ℃"
 				wind := "\nСкорость ветра: " + strconv.Itoa(info.Fact.WindSpeed)+ " м/с"
 
-				ureq :=temp + feels + wind 
+				ureq := condition_emo[cld] + condition_emo[cld] + condition_emo[cld] + temp + feels + wind 
+
+				b.Edit(c.Message, ureq, &tb.ReplyMarkup{
+					InlineKeyboard: mainInline,
+				})
+
+				b.Respond(c, &tb.CallbackResponse{})
+			})
+
+			b.Handle(&fact_per_hour, func(c *tb.Callback) {
+
+				log.Println(m.Sender.Username, ": per_week")
+
+				ureq := "Сегодня\n"
+
+				for i := 0; i < len(info.Forecast[0].Hours); i++ {
+					pw_date := "Час: " + strconv.Itoa(i)
+					temp := "\nТемпература воздуха составит: " + strconv.Itoa(info.Forecast[0].Hours[i].Temp) + " ℃"
+					feels := "\nОщущается как: " + strconv.Itoa(info.Forecast[0].Hours[i].Feels) + " ℃"
+					wind := "\nСкорость ветра: " + strconv.Itoa(info.Forecast[0].Hours[i].WindSpeed)+ " м/с\n\n"
+					cld := info.Forecast[0].Hours[i].Condition
+					count := weekday+i-1
+					if count > 6 {
+						count = count - 7
+					}
+					ureq += "🕒 " + pw_date + " " + condition_emo[cld] + temp + feels + wind
+				}
+
+				b.Edit(c.Message, ureq, &tb.ReplyMarkup{
+					InlineKeyboard: mainInline,
+				})
+
+				b.Respond(c, &tb.CallbackResponse{})
+			})
+
+			b.Handle(&tomorrow_per_hour, func(c *tb.Callback) {
+
+				log.Println(m.Sender.Username, ": per_week")
+
+				ureq := "Завтра\n"
+
+				for i := 0; i < len(info.Forecast[1].Hours); i++ {
+					pw_date := "Час: " + strconv.Itoa(i)
+					temp := "\nТемпература воздуха составит: " + strconv.Itoa(info.Forecast[1].Hours[i].Temp) + " ℃"
+					feels := "\nОщущается как: " + strconv.Itoa(info.Forecast[1].Hours[i].Feels) + " ℃"
+					wind := "\nСкорость ветра: " + strconv.Itoa(info.Forecast[1].Hours[i].WindSpeed)+ " м/с\n\n"
+					cld := info.Forecast[1].Hours[i].Condition
+					count := weekday+i-1
+					if count > 6 {
+						count = count - 7
+					}
+					ureq += "🕒 " + pw_date + " " + condition_emo[cld] + temp + feels + wind
+				}
 
 				b.Edit(c.Message, ureq, &tb.ReplyMarkup{
 					InlineKeyboard: mainInline,
@@ -253,34 +340,19 @@ func main() {
 				log.Println(m.Sender.Username, ": per_week")
 
 				var ureq string
-				//var weekdays [7]string
-
-				weekday := int(time.Now().Weekday())
-				weekdays := [7]string{"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресение"}
-				cloud_emo := [4]string{"☀️", "🌤️", "⛅", "☁️"}
 
 				for i := 0; i < len(info.Forecast); i++ {
 					pw_date := "Дата: " + info.Forecast[i].Date
 					temp := "\nТемпература воздуха составит: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.Temp) + " ℃"
 					feels := "\nОщущается как: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.Feels) + " ℃"
 					wind := "\nСкорость ветра: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.WindSpeed)+ " м/с\n\n"
-					cld := info.Forecast[i].Parts.Day_short.Cloudness
+					cld := info.Forecast[i].Parts.Day_short.Condition
 					count := weekday+i-1
 					if count > 6 {
 						count = count - 7
 					}
-					count_cld := 1
-					if cld == 0 {
-						count_cld = 0
-					} else if cld == 0.25 {
-						count_cld = 1
-					} else if cld == 1 {
-							count_cld = 3
-					} else {
-						count_cld = 2
-					}
-					log.Println(count)
-					ureq += cloud_emo[count_cld] + " " + weekdays[count] + "\n" + pw_date + temp + feels + wind 
+					
+					ureq += condition_emo[cld] + " " + weekdays[count] + "\n" + pw_date + temp + feels + wind 
 				}
 
 				b.Edit(c.Message, ureq, &tb.ReplyMarkup{
@@ -295,32 +367,19 @@ func main() {
 				log.Println(m.Sender.Username, ": per_weekend")
 
 				var ureq string
-				//var weekdays [7]string
-
-				weekday := int(time.Now().Weekday())
-				weekdays := [7]string{"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресение"}
-				cloud_emo := [4]string{"☀️", "🌤️", "⛅", "☁️"}
 
 				for i := 0; i < len(info.Forecast); i++ {
 					pw_date := "Дата: " + info.Forecast[i].Date
 					temp := "\nТемпература воздуха составит: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.Temp) + " ℃"
 					feels := "\nОщущается как: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.Feels) + " ℃"
 					wind := "\nСкорость ветра: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.WindSpeed)+ " м/с\n\n"
-					cld := info.Forecast[i].Parts.Day_short.Cloudness
+					cld := info.Forecast[i].Parts.Day_short.Condition
 					count := weekday+i-1
 					if count > 6 {
 						count = i-weekday-2
 					}
-					count_cld := 0
-					if cld == 0 {
-						count_cld = 0
-					} else if cld == 1 {
-						count_cld = 3
-					} else {
-						count_cld = 2
-					}
 					if count > 4 {
-						ureq += cloud_emo[count_cld] + " " + weekdays[count] + "\n" + pw_date + temp + feels + wind 
+						ureq += condition_emo[cld] + " " + weekdays[count] + "\n" + pw_date + temp + feels + wind 
 					}
 				}
 

@@ -1,16 +1,31 @@
 package main
 
 import (
-	"os"
+	//"os"
 	"log"
-	//"fmt"
+	"fmt"
 	"time"
+	"bytes"
 	"strconv"
 	"net/http"
 	"io/ioutil"
 	"encoding/json"
 	tb "gopkg.in/tucnak/telebot.v2"
 )
+
+// Struct of cities.json
+
+type CitiesInfo struct {
+	Cities []cities_info `json:"cities"`
+}
+
+type cities_info struct {
+	Name string `json:"Город"`
+	Lat float64 `json:"Широта"`
+	Lon float64 `json:"Долгота"`
+}
+
+// Struct of json response from Yandex.Weather API
 
 type Info struct {
 	Now int `json:"now"`
@@ -112,8 +127,41 @@ type hour struct {
 	Humidity int `json:"humidity"`
 }
 
+// Function for keep session on Heroku 
+
 func MainHandler(resp http.ResponseWriter, _ *http.Request) {
     resp.Write([]byte("Hi there! I'm BoGoBot!"))
+}
+
+// Function for GET request on Yandex.Weather
+
+func GetWeather(ulat, ulon float64) Info {
+	var info Info
+	lat := fmt.Sprintf("%f", ulat)
+	lon := fmt.Sprintf("%f", ulon)
+
+	// Add header on GET request
+
+	client := &http.Client{
+	}
+	
+	req, err := http.NewRequest("GET", "https://api.weather.yandex.ru/v1/forecast?lat="+lat+"&lon="+lon, nil)
+	ykey := "X-Yandex-API-Key"
+	yval := os.Getenv("YA_TOKEN")
+	req.Header.Add(ykey, yval)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	resp, err := client.Do(req)
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	json.Unmarshal(body, &info)
+	defer resp.Body.Close()
+	return info
 }
 
 func main() {
@@ -126,8 +174,16 @@ func main() {
 		return
 	}
 
+	log.Printf("Authorized on account PoGoBot")
+
+	var cities CitiesInfo
+	user_info := make(map[string]Info)
+	user_city := make(map[string]string)
+	user_lat := make(map[string]float64)
+	user_lon := make(map[string]float64)
+
 	weekday := int(time.Now().Weekday())
-	weekdays := [7]string{"Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресение"}
+	weekdays := [7]string{"Воскресение", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"}
 
 	condition_emo := map[string]string{
 		"clear": "☀️",
@@ -150,9 +206,42 @@ func main() {
 		"cloudy-and-snow": "🌨️",
 	}
 
-	log.Printf("Authorized on account PoGoBot")
+	condition_desc := map[string]string{
+		"clear": "Ясно",
+		"partly-cloudy": "Малооблачно",
+		"cloudy": "Облачно с прояснениями",
+		"overcast": "Пасмурно",
+		"partly-cloudy-and-light-rain": "Малооблачно, небольшой дождь",
+		"partly-cloudy-and-rain": "Малооблачно, дождь",
+		"overcast-and-rain": "Значительная облачность, сильный дождь",
+		"overcast-thunderstorms-with-rain": "Сильный дождь с грозой",
+		"cloudy-and-light-rain": "Облачно, небольшой дождь",
+		"overcast-and-light-rain": "Значительная облачность, небольшой дождь",
+		"cloudy-and-rain": "Облачно, дождь",
+		"overcast-and-wet-snow": "Дождь со снегом",
+		"partly-cloudy-and-light-snow": "Небольшой снег",
+		"partly-cloudy-and-snow": "Малооблачно, снег", 
+		"overcast-and-snow": "Снегопад",
+		"cloudy-and-light-snow": "Облачно, небольшой снег",
+		"overcast-and-light-snow": "Значительная облачность, небольшой снег",
+		"cloudy-and-snow": "Облачно, снег",
+	}
+	
+	// Open our cities.json 
+	jsonCities, err := ioutil.ReadFile("cities.json")
+	if err != nil {
+		log.Println(err)
+	}
 
-	var info Info
+	// The BOM identifies that the text is UTF-8 encoded, but it should be removed before decoding.
+	jsonCities = bytes.TrimPrefix(jsonCities, []byte("\xef\xbb\xbf"))
+	  
+	err = json.Unmarshal(jsonCities, &cities)
+    if err != nil {
+        log.Println("error:", err)
+    }
+
+	// Set buttons on bot
 
 	act_data := tb.InlineButton{
 		Unique: "AD",
@@ -199,6 +288,7 @@ func main() {
 		Text:   "⬅️ Назад",
 	}
 	
+	// Collect buttons on group
 
 	mainInline := [][]tb.InlineButton{
 		[]tb.InlineButton{fact, nextd},
@@ -214,50 +304,57 @@ func main() {
 	}
 
 	http.HandleFunc("/", MainHandler)
-    go http.ListenAndServe(":"+os.Getenv("PORT"), nil)
+    go http.ListenAndServe(":"+os.Getenv("PORT"), nil)     
 
 	b.Handle("/start", func(m *tb.Message) {
-			b.Send(m.Sender, "🌤️ Привет!\nЯ помогу узнать о погоде", &tb.ReplyMarkup{
-				InlineKeyboard: mainInline,
+			b.Send(m.Sender, "🌤️ Привет!\nЯ помогу узнать о погоде. Но сперва нужно выбрать город. Для выбора города отправь мне его название.")
+
+			b.Handle(tb.OnText, func(m *tb.Message) {
+				if_found := 0
+
+				log.Println(m.Sender.Username, ":", m.Text)
+
+				for  i := 0;  i < len(cities.Cities);  i++ {
+					if m.Text == cities.Cities[i].Name {
+						user_city[m.Sender.Username] = cities.Cities[i].Name
+						user_lat[m.Sender.Username] = cities.Cities[i].Lat
+						user_lon[m.Sender.Username] = cities.Cities[i].Lon
+						if_found = 1
+					}
+				}
+
+				if if_found == 0 {
+					uresp := "Город не найден.\nНазвание города должно быть написано полностью и с большой буквы. Пример сообщения:\nМосква"
+					b.Send(m.Sender, uresp)
+				} else {
+					user_info[m.Sender.Username] = GetWeather(user_lat[m.Sender.Username], user_lon[m.Sender.Username])
+					uresp := "Выбран город: " + user_city[m.Sender.Username]
+					b.Send(m.Sender, uresp, &tb.ReplyMarkup{
+						InlineKeyboard: mainInline,
+					})
+				}
 			})
 
 			b.Handle(&act_data, func(c *tb.Callback) {
 
-				log.Println(m.Sender.Username, ": act_data")
+				log.Println(c.Sender.Username, ": act_data")
 
-				client := &http.Client{
-				}
-				
-				req, err := http.NewRequest("GET", "https://api.weather.yandex.ru/v1/forecast?lat=55.715723&lon=37.459478", nil)
-				ykey := "X-Yandex-API-Key"
-				yval := os.Getenv("YA_TOKEN")
-				req.Header.Add(ykey, yval)
-				if err != nil {
-					log.Fatalln(err)
-				}
-				resp, err := client.Do(req)
-			
-				body, err := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					log.Fatalln(err)
-				}
-
-				json.Unmarshal(body, &info)
-
-				defer resp.Body.Close()
+				user_info[m.Sender.Username] = GetWeather(user_lat[m.Sender.Username], user_lon[m.Sender.Username])
 
 				b.Respond(c, &tb.CallbackResponse{})
 			})
 
 			b.Handle(&nextd, func(c *tb.Callback) {
 
-				log.Println(m.Sender.Username, ": nextd")
-				cld := info.Forecast[1].Parts.Day_short.Condition
-				temp := "\nЗавтра температура воздуха составит: " + strconv.Itoa(info.Forecast[1].Parts.Day_short.Temp) + " ℃"
-				feels := "\nОщущается как: " + strconv.Itoa(info.Forecast[1].Parts.Day_short.Feels) + " ℃"
-				wind := "\nСкорость ветра: " + strconv.Itoa(info.Forecast[1].Parts.Day_short.WindSpeed) + "м/с"
+				log.Println(c.Sender.Username, ": nextd")
 
-				ureq := condition_emo[cld] + condition_emo[cld] + condition_emo[cld] + temp + feels + wind
+				cld := user_info[c.Sender.Username].Forecast[1].Parts.Day_short.Condition
+				city_header := "\nЗавтра в городе " + user_city[c.Sender.Username] + "\n"
+				temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Parts.Day_short.Temp) + " ℃"
+				feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Parts.Day_short.Feels) + " ℃"
+				wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Parts.Day_short.WindSpeed) + "м/с"
+
+				ureq := condition_emo[cld] + condition_emo[cld] + condition_emo[cld] + city_header + condition_desc[cld] +  temp + feels + wind
 
 				b.Edit(c.Message, ureq, &tb.ReplyMarkup{
 					InlineKeyboard: mainInline,
@@ -268,13 +365,15 @@ func main() {
 
 			b.Handle(&fact, func(c *tb.Callback) {
 
-				log.Println(m.Sender.Username, ": fact ---")
-				cld := info.Fact.Condition
-				temp := "\nТемпература воздуха составляет: " + strconv.Itoa(info.Fact.Temp) + " ℃"
-				feels := "\nОщущается как: " + strconv.Itoa(info.Fact.Feels) + " ℃"
-				wind := "\nСкорость ветра: " + strconv.Itoa(info.Fact.WindSpeed)+ " м/с"
+				log.Println(c.Sender.Username, ": fact ---")
 
-				ureq := condition_emo[cld] + condition_emo[cld] + condition_emo[cld] + temp + feels + wind 
+				cld := user_info[c.Sender.Username].Fact.Condition
+				city_header := "\nПогода в городе " + user_city[c.Sender.Username] + "\n"
+				temp := "\nТемпература воздуха составляет: " + strconv.Itoa(user_info[c.Sender.Username].Fact.Temp) + " ℃"
+				feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Fact.Feels) + " ℃"
+				wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Fact.WindSpeed)+ " м/с"
+
+				ureq := condition_emo[cld] + condition_emo[cld] + condition_emo[cld] + city_header + condition_desc[cld] + temp + feels + wind 
 
 				b.Edit(c.Message, ureq, &tb.ReplyMarkup{
 					InlineKeyboard: mainInline,
@@ -285,21 +384,18 @@ func main() {
 
 			b.Handle(&fact_per_hour, func(c *tb.Callback) {
 
-				log.Println(m.Sender.Username, ": per_week")
+				log.Println(c.Sender.Username, ": per_week")
 
-				ureq := "Сегодня\n"
+				ureq := "Сегодня в городе " + user_city[c.Sender.Username] +"\n"
 
-				for i := 0; i < len(info.Forecast[0].Hours); i++ {
+				for i := 0; i < len(user_info[c.Sender.Username].Forecast[0].Hours); i++ {
 					pw_date := "Час: " + strconv.Itoa(i)
-					temp := "\nТемпература воздуха составит: " + strconv.Itoa(info.Forecast[0].Hours[i].Temp) + " ℃"
-					feels := "\nОщущается как: " + strconv.Itoa(info.Forecast[0].Hours[i].Feels) + " ℃"
-					wind := "\nСкорость ветра: " + strconv.Itoa(info.Forecast[0].Hours[i].WindSpeed)+ " м/с\n\n"
-					cld := info.Forecast[0].Hours[i].Condition
-					count := weekday+i-1
-					if count > 6 {
-						count = count - 7
-					}
-					ureq += "🕒 " + pw_date + " " + condition_emo[cld] + temp + feels + wind
+					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[0].Hours[i].Temp) + " ℃"
+					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[0].Hours[i].Feels) + " ℃"
+					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[0].Hours[i].WindSpeed)+ " м/с\n\n"
+					cld := user_info[c.Sender.Username].Forecast[0].Hours[i].Condition
+
+					ureq += "🕒 " + pw_date + " " + condition_emo[cld] + "\n" + condition_desc[cld] + temp + feels + wind
 				}
 
 				b.Edit(c.Message, ureq, &tb.ReplyMarkup{
@@ -313,19 +409,16 @@ func main() {
 
 				log.Println(m.Sender.Username, ": per_week")
 
-				ureq := "Завтра\n"
+				ureq := "Завтра в городе " + user_city[c.Sender.Username] + "\n"
 
-				for i := 0; i < len(info.Forecast[1].Hours); i++ {
+				for i := 0; i < len(user_info[c.Sender.Username].Forecast[1].Hours); i++ {
 					pw_date := "Час: " + strconv.Itoa(i)
-					temp := "\nТемпература воздуха составит: " + strconv.Itoa(info.Forecast[1].Hours[i].Temp) + " ℃"
-					feels := "\nОщущается как: " + strconv.Itoa(info.Forecast[1].Hours[i].Feels) + " ℃"
-					wind := "\nСкорость ветра: " + strconv.Itoa(info.Forecast[1].Hours[i].WindSpeed)+ " м/с\n\n"
-					cld := info.Forecast[1].Hours[i].Condition
-					count := weekday+i-1
-					if count > 6 {
-						count = count - 7
-					}
-					ureq += "🕒 " + pw_date + " " + condition_emo[cld] + temp + feels + wind
+					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Hours[i].Temp) + " ℃"
+					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Hours[i].Feels) + " ℃"
+					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Hours[i].WindSpeed)+ " м/с\n\n"
+					cld := user_info[c.Sender.Username].Forecast[1].Hours[i].Condition
+
+					ureq += "🕒 " + pw_date + " " + condition_emo[cld] + "\n" + condition_desc[cld] + temp + feels + wind
 				}
 
 				b.Edit(c.Message, ureq, &tb.ReplyMarkup{
@@ -341,18 +434,18 @@ func main() {
 
 				var ureq string
 
-				for i := 0; i < len(info.Forecast); i++ {
-					pw_date := "Дата: " + info.Forecast[i].Date
-					temp := "\nТемпература воздуха составит: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.Temp) + " ℃"
-					feels := "\nОщущается как: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.Feels) + " ℃"
-					wind := "\nСкорость ветра: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.WindSpeed)+ " м/с\n\n"
-					cld := info.Forecast[i].Parts.Day_short.Condition
-					count := weekday+i-1
+				for i := 0; i < len(user_info[c.Sender.Username].Forecast); i++ {
+					pw_date := "Дата: " + user_info[c.Sender.Username].Forecast[i].Date
+					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Temp) + " ℃"
+					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Feels) + " ℃"
+					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.WindSpeed)+ " м/с\n\n"
+					cld := user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Condition
+					count := weekday+i
 					if count > 6 {
 						count = count - 7
 					}
 					
-					ureq += condition_emo[cld] + " " + weekdays[count] + "\n" + pw_date + temp + feels + wind 
+					ureq += condition_emo[cld] + " " + weekdays[count] + "\n" + pw_date + "\n" + condition_desc[cld] + temp + feels + wind 
 				}
 
 				b.Edit(c.Message, ureq, &tb.ReplyMarkup{
@@ -368,18 +461,18 @@ func main() {
 
 				var ureq string
 
-				for i := 0; i < len(info.Forecast); i++ {
-					pw_date := "Дата: " + info.Forecast[i].Date
-					temp := "\nТемпература воздуха составит: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.Temp) + " ℃"
-					feels := "\nОщущается как: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.Feels) + " ℃"
-					wind := "\nСкорость ветра: " + strconv.Itoa(info.Forecast[i].Parts.Day_short.WindSpeed)+ " м/с\n\n"
-					cld := info.Forecast[i].Parts.Day_short.Condition
-					count := weekday+i-1
+				for i := 0; i < len(user_info[c.Sender.Username].Forecast); i++ {
+					pw_date := "Дата: " + user_info[c.Sender.Username].Forecast[i].Date
+					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Temp) + " ℃"
+					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Feels) + " ℃"
+					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.WindSpeed)+ " м/с\n\n"
+					cld := user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Condition
+					count := weekday+i
 					if count > 6 {
-						count = i-weekday-2
+						count += -7
 					}
-					if count > 4 {
-						ureq += condition_emo[cld] + " " + weekdays[count] + "\n" + pw_date + temp + feels + wind 
+					if count == 6 || count == 0 {
+						ureq += condition_emo[cld] + " " + weekdays[count] + "\n" + pw_date + "\n" + condition_desc[cld] + temp + feels + wind 
 					}
 				}
 

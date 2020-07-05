@@ -1,2 +1,2 @@
-worcker: go build bot.go
-worcker: bot
+web: go get -u gopkg.in/tucnak/telebot.v2
+web: bot

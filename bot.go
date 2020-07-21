@@ -130,13 +130,13 @@ type hour struct {
 // Function for keep session on Heroku 
 
 func MainHandler(resp http.ResponseWriter, _ *http.Request) {
-    resp.Write([]byte("Hi there! I'm BoGoBot!"))
+    resp.Write([]byte("Hi there! I'm PoGoBot!"))
 }
 
-// Function for GET request on Yandex.Weather
+// Function for GET request on Yandex.Weather API
 
 func GetWeather(ulat, ulon float64) Info {
-	var info Info
+	var info Info  // Variable containing a response Yandex.Weather API with the Info structure
 	lat := fmt.Sprintf("%f", ulat)
 	lon := fmt.Sprintf("%f", ulon)
 
@@ -147,7 +147,7 @@ func GetWeather(ulat, ulon float64) Info {
 	
 	req, err := http.NewRequest("GET", "https://api.weather.yandex.ru/v1/forecast?lat="+lat+"&lon="+lon, nil)
 	ykey := "X-Yandex-API-Key"
-	yval := os.Getenv("YA_TOKEN")
+	yval := "20fb12c3-2813-4073-b6f7-4b2ce62e2320"                                   //os.Getenv("YA_TOKEN")
 	req.Header.Add(ykey, yval)
 	if err != nil {
 		log.Fatalln(err)
@@ -165,7 +165,7 @@ func GetWeather(ulat, ulon float64) Info {
 }
 
 func main() {
-	bot_token := os.Getenv("BOT_TOKEN")
+	bot_token := "1086575589:AAFY2BXuY2p2Gn7CQoVrkcjQfPbC6j3IazM"                                 //os.Getenv("BOT_TOKEN")
 	b, err := tb.NewBot(tb.Settings{
 		Token: bot_token, 
 		Poller: &tb.LongPoller{Timeout: 10 * time.Second},
@@ -177,10 +177,10 @@ func main() {
 	log.Printf("Authorized on account PoGoBot")
 
 	var cities CitiesInfo
-	user_info := make(map[string]Info)
-	user_city := make(map[string]string)
-	user_lat := make(map[string]float64)
-	user_lon := make(map[string]float64)
+	user_info := make(map[int]Info)
+	user_city := make(map[int]string)
+	user_lat := make(map[int]float64)
+	user_lon := make(map[int]float64)
 
 	weekday := int(time.Now().Weekday())
 	weekdays := [7]string{"Воскресение", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"}
@@ -310,25 +310,25 @@ func main() {
 			b.Send(m.Sender, "🌤️ Привет!\nЯ помогу узнать о погоде. Но сперва нужно выбрать город. Для выбора города отправь мне его название.")
 
 			b.Handle(tb.OnText, func(m *tb.Message) {
-				if_found := 0
+				if_found := false
 
 				log.Println(m.Sender.Username, ":", m.Text)
 
 				for  i := 0;  i < len(cities.Cities);  i++ {
 					if m.Text == cities.Cities[i].Name {
-						user_city[m.Sender.Username] = cities.Cities[i].Name
-						user_lat[m.Sender.Username] = cities.Cities[i].Lat
-						user_lon[m.Sender.Username] = cities.Cities[i].Lon
-						if_found = 1
+						user_city[m.Sender.ID] = cities.Cities[i].Name
+						user_lat[m.Sender.ID] = cities.Cities[i].Lat
+						user_lon[m.Sender.ID] = cities.Cities[i].Lon
+						if_found = true
 					}
 				}
 
-				if if_found == 0 {
+				if if_found == false {
 					uresp := "Город не найден.\nНазвание города должно быть написано полностью и с большой буквы. Пример сообщения:\nМосква"
 					b.Send(m.Sender, uresp)
 				} else {
-					user_info[m.Sender.Username] = GetWeather(user_lat[m.Sender.Username], user_lon[m.Sender.Username])
-					uresp := "Выбран город: " + user_city[m.Sender.Username]
+					user_info[m.Sender.ID] = GetWeather(user_lat[m.Sender.ID], user_lon[m.Sender.ID])
+					uresp := "Выбран город: " + user_city[m.Sender.ID]
 					b.Send(m.Sender, uresp, &tb.ReplyMarkup{
 						InlineKeyboard: mainInline,
 					})
@@ -339,7 +339,7 @@ func main() {
 
 				log.Println(c.Sender.Username, ": act_data")
 
-				user_info[m.Sender.Username] = GetWeather(user_lat[m.Sender.Username], user_lon[m.Sender.Username])
+				user_info[m.Sender.ID] = GetWeather(user_lat[m.Sender.ID], user_lon[m.Sender.ID])
 
 				b.Respond(c, &tb.CallbackResponse{})
 			})
@@ -348,11 +348,11 @@ func main() {
 
 				log.Println(c.Sender.Username, ": nextd")
 
-				cld := user_info[c.Sender.Username].Forecast[1].Parts.Day_short.Condition
-				city_header := "\nЗавтра в городе " + user_city[c.Sender.Username] + "\n"
-				temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Parts.Day_short.Temp) + " ℃"
-				feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Parts.Day_short.Feels) + " ℃"
-				wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Parts.Day_short.WindSpeed) + "м/с"
+				cld := user_info[c.Sender.ID].Forecast[1].Parts.Day_short.Condition
+				city_header := "\nЗавтра в городе " + user_city[c.Sender.ID] + "\n"
+				temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[1].Parts.Day_short.Temp) + " ℃"
+				feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[1].Parts.Day_short.Feels) + " ℃"
+				wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[1].Parts.Day_short.WindSpeed) + "м/с"
 
 				ureq := condition_emo[cld] + condition_emo[cld] + condition_emo[cld] + city_header + condition_desc[cld] +  temp + feels + wind
 
@@ -367,11 +367,11 @@ func main() {
 
 				log.Println(c.Sender.Username, ": fact ---")
 
-				cld := user_info[c.Sender.Username].Fact.Condition
-				city_header := "\nПогода в городе " + user_city[c.Sender.Username] + "\n"
-				temp := "\nТемпература воздуха составляет: " + strconv.Itoa(user_info[c.Sender.Username].Fact.Temp) + " ℃"
-				feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Fact.Feels) + " ℃"
-				wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Fact.WindSpeed)+ " м/с"
+				cld := user_info[c.Sender.ID].Fact.Condition
+				city_header := "\nПогода в городе " + user_city[c.Sender.ID] + "\n"
+				temp := "\nТемпература воздуха составляет: " + strconv.Itoa(user_info[c.Sender.ID].Fact.Temp) + " ℃"
+				feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.ID].Fact.Feels) + " ℃"
+				wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.ID].Fact.WindSpeed)+ " м/с"
 
 				ureq := condition_emo[cld] + condition_emo[cld] + condition_emo[cld] + city_header + condition_desc[cld] + temp + feels + wind 
 
@@ -386,14 +386,14 @@ func main() {
 
 				log.Println(c.Sender.Username, ": per_week")
 
-				ureq := "Сегодня в городе " + user_city[c.Sender.Username] +"\n"
+				ureq := "Сегодня в городе " + user_city[c.Sender.ID] +"\n"
 
-				for i := 0; i < len(user_info[c.Sender.Username].Forecast[0].Hours); i++ {
+				for i := 0; i < len(user_info[c.Sender.ID].Forecast[0].Hours); i++ {
 					pw_date := "Час: " + strconv.Itoa(i)
-					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[0].Hours[i].Temp) + " ℃"
-					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[0].Hours[i].Feels) + " ℃"
-					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[0].Hours[i].WindSpeed)+ " м/с\n\n"
-					cld := user_info[c.Sender.Username].Forecast[0].Hours[i].Condition
+					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[0].Hours[i].Temp) + " ℃"
+					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[0].Hours[i].Feels) + " ℃"
+					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[0].Hours[i].WindSpeed)+ " м/с\n\n"
+					cld := user_info[c.Sender.ID].Forecast[0].Hours[i].Condition
 
 					ureq += "🕒 " + pw_date + " " + condition_emo[cld] + "\n" + condition_desc[cld] + temp + feels + wind
 				}
@@ -409,14 +409,14 @@ func main() {
 
 				log.Println(m.Sender.Username, ": per_week")
 
-				ureq := "Завтра в городе " + user_city[c.Sender.Username] + "\n"
+				ureq := "Завтра в городе " + user_city[c.Sender.ID] + "\n"
 
-				for i := 0; i < len(user_info[c.Sender.Username].Forecast[1].Hours); i++ {
+				for i := 0; i < len(user_info[c.Sender.ID].Forecast[1].Hours); i++ {
 					pw_date := "Час: " + strconv.Itoa(i)
-					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Hours[i].Temp) + " ℃"
-					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Hours[i].Feels) + " ℃"
-					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[1].Hours[i].WindSpeed)+ " м/с\n\n"
-					cld := user_info[c.Sender.Username].Forecast[1].Hours[i].Condition
+					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[1].Hours[i].Temp) + " ℃"
+					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[1].Hours[i].Feels) + " ℃"
+					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[1].Hours[i].WindSpeed)+ " м/с\n\n"
+					cld := user_info[c.Sender.ID].Forecast[1].Hours[i].Condition
 
 					ureq += "🕒 " + pw_date + " " + condition_emo[cld] + "\n" + condition_desc[cld] + temp + feels + wind
 				}
@@ -434,12 +434,12 @@ func main() {
 
 				var ureq string
 
-				for i := 0; i < len(user_info[c.Sender.Username].Forecast); i++ {
-					pw_date := "Дата: " + user_info[c.Sender.Username].Forecast[i].Date
-					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Temp) + " ℃"
-					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Feels) + " ℃"
-					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.WindSpeed)+ " м/с\n\n"
-					cld := user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Condition
+				for i := 0; i < len(user_info[c.Sender.ID].Forecast); i++ {
+					pw_date := "Дата: " + user_info[c.Sender.ID].Forecast[i].Date
+					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[i].Parts.Day_short.Temp) + " ℃"
+					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[i].Parts.Day_short.Feels) + " ℃"
+					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[i].Parts.Day_short.WindSpeed)+ " м/с\n\n"
+					cld := user_info[c.Sender.ID].Forecast[i].Parts.Day_short.Condition
 					count := weekday+i
 					if count > 6 {
 						count = count - 7
@@ -461,12 +461,12 @@ func main() {
 
 				var ureq string
 
-				for i := 0; i < len(user_info[c.Sender.Username].Forecast); i++ {
-					pw_date := "Дата: " + user_info[c.Sender.Username].Forecast[i].Date
-					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Temp) + " ℃"
-					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Feels) + " ℃"
-					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.Username].Forecast[i].Parts.Day_short.WindSpeed)+ " м/с\n\n"
-					cld := user_info[c.Sender.Username].Forecast[i].Parts.Day_short.Condition
+				for i := 0; i < len(user_info[c.Sender.ID].Forecast); i++ {
+					pw_date := "Дата: " + user_info[c.Sender.ID].Forecast[i].Date
+					temp := "\nТемпература воздуха составит: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[i].Parts.Day_short.Temp) + " ℃"
+					feels := "\nОщущается как: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[i].Parts.Day_short.Feels) + " ℃"
+					wind := "\nСкорость ветра: " + strconv.Itoa(user_info[c.Sender.ID].Forecast[i].Parts.Day_short.WindSpeed)+ " м/с\n\n"
+					cld := user_info[c.Sender.ID].Forecast[i].Parts.Day_short.Condition
 					count := weekday+i
 					if count > 6 {
 						count += -7
